@@ -4,8 +4,7 @@ extern crate glutin;
 extern crate image;
 
 use gl_puck::model;
-use gl_puck::model::Renderable;
-use gl_puck::model::World2D;
+use gl_puck::model::{World2D, Model};
 use gl_puck::{input, mesh};
 use gl_wrapper::render::texture::TextureFunc;
 use gl_wrapper::render::*;
@@ -26,8 +25,6 @@ use std::path::Path;
 use gl_puck::camera::Camera2D;
 use glam::{Mat3, Vec2};
 use glutin::platform::desktop::EventLoopExtDesktop;
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::time::Instant;
 
 // Vertex data
@@ -103,28 +100,24 @@ void main() {
 
     // Create GLSL shaders
     println!("Loading shaders ...");
-    let program = RefCell::new({
+    let mut program ={
         // Program and shader provide their own error messages
         let vs = shader::VertexShader::new(VS_SRC).unwrap();
         let fs = shader::FragmentShader::new(FS_SRC).unwrap();
         program::Program::new(&[&vs.into(), &fs.into()]).unwrap()
-    });
+    };
 
-    program.borrow().bind_program();
+    program.bind_program();
     program
-        .borrow_mut()
         .load_attribute("position".to_owned())
         .expect("Failed to load data from shader!");
     program
-        .borrow_mut()
         .load_attribute("tex_coord".to_owned())
         .expect("Failed to load data from shader!");
     program
-        .borrow_mut()
         .load_uniform("mvp".to_owned())
         .expect("Failed to load data form shader!");
     program
-        .borrow_mut()
         .load_sampler("obj_tex".to_owned())
         .expect("Failed to load data from shader!");
     println!("Done!");
@@ -168,57 +161,42 @@ void main() {
     // Load mesh data ( indices, vertices, uv data )
     println!("Loading mesh ...");
     // NOTE: Creating a vbo with data auto binds it, creating a vbo using new does not
-    let pos_vbo = Rc::new(
+    let pos_vbo =
         buffer_obj::VBO::<GLfloat>::with_data(&[2], &VERTEX_DATA, gl::STATIC_DRAW)
-            .expect("Failed to upload data to vbo!"),
-    );
-    let tex_vbo = Rc::new(
+            .expect("Failed to upload data to vbo!");
+    let tex_vbo =
         buffer_obj::VBO::<GLfloat>::with_data(&[2], &TEX_DATA, gl::STATIC_DRAW)
-            .expect("Failed to upload data to vbo!"),
-    );
-    let ind_ibo = Rc::new(
+            .expect("Failed to upload data to vbo!");
+    let ind_ibo =
         buffer_obj::IBO::<GLushort>::with_data(&IND_DATA, gl::STATIC_DRAW)
-            .expect("Failed to upload data to ibo!"),
-    );
+            .expect("Failed to upload data to ibo!");
 
     let mut apple = {
         let m = mesh::Mesh::new(
-            &[
-                (
-                    &pos_vbo,
-                    program.borrow().get_attribute_id("position").unwrap(),
-                ),
-                (
-                    &tex_vbo,
-                    program.borrow().get_attribute_id("tex_coord").unwrap(),
-                ),
-            ],
             &ind_ibo,
         )
         .unwrap();
-        model::Model2D::new(m, &program)
+        model::Model2D::new(m)
     };
+    apple.bind_model();
+    apple.adapt_bound_model_to_attrib(&pos_vbo, program.get_attribute_id("position").unwrap()).unwrap();
+    apple.adapt_bound_model_to_attrib(&tex_vbo, program.get_attribute_id("tex_coord").unwrap()).unwrap();
+    apple.adapt_bound_model_to_program(&program).unwrap();
 
     let tex2_vbo = buffer_obj::VBO::<GLfloat>::with_data(&[2], &TEX2_DATA, gl::STATIC_DRAW)
         .expect("Failed to upload to vbo!");
 
     let mut test = {
         let m = mesh::Mesh::new(
-            &[
-                (
-                    &pos_vbo,
-                    program.borrow().get_attribute_id("position").unwrap(),
-                ),
-                (
-                    &tex2_vbo,
-                    program.borrow().get_attribute_id("tex_coord").unwrap(),
-                ),
-            ],
             &ind_ibo,
         )
         .unwrap();
-        model::Model2D::new(m, &program)
+        model::Model2D::new(m)
     };
+    test.bind_model();
+    test.adapt_bound_model_to_attrib(&pos_vbo, program.get_attribute_id("position").unwrap()).unwrap();
+    test.adapt_bound_model_to_attrib(&tex2_vbo, program.get_attribute_id("tex_coord").unwrap()).unwrap();
+    test.adapt_bound_model_to_program(&program).unwrap();
 
     // We need to specify it in half due to projection ( thankfully tho speeds are 1:1 )
     // TODO: Fix this
@@ -266,9 +244,10 @@ void main() {
             Event::RedrawEventsCleared => {
                 // TODO: Eyeballing the output of this it seems like the app still has some microstutters, but they don't really occur usually plus aren't that annoying ans could probably be resolved by averaging the elapsed time over multiple frames to get a smoother movement and probably resolve the stutters, whatever
                 let delta_t = start.elapsed().as_secs_f32();
+                // TODO: FIgure out why higher fps makes movement slower
                 let fps = 1.0 / delta_t;
 
-                if fps <= 60.0 { // If fps is too high ( yes this could be a problem as it makes the movement of the object extremely small and basically introduces a lag spike ( or bette named a performance spike ) which is bad) just waste the current cycle and do not reset timer to let it accumulate time
+                if fps <= 60.0 { // If fps is too high ( yes this could be a problem as it makes the movement of the object extremely small and basically introduces a lag spike ( or better named a performance spike ) which is bad) just waste the current cycle and do not reset timer to let it accumulate time
                     // speed of 200 u.m. ( units of measurement ) ( in this case pixels ) / sec.
                     if keyb.is_pressed(glutin::event::VirtualKeyCode::W).unwrap_or(false) {
                         apple.strafe(Vec2::new(0.0, SPEED * delta_t));
@@ -290,26 +269,26 @@ void main() {
 
                     unsafe { gl::Clear(gl::COLOR_BUFFER_BIT); }
 
-                    tile.bind_texture_for_sampling(test.get_program().get_sampler_id("obj_tex").unwrap());
+                    tile.bind_texture_for_sampling(program.get_sampler_id("obj_tex").unwrap());
 
-                    test.bind().unwrap();
+                    test.bind_model();
                     {
-                        let i: i32 = i32::try_from(test.get_program().get_uniform_id("mvp").unwrap()).unwrap();
+                        let i: i32 = i32::try_from(program.get_uniform_id("mvp").unwrap()).unwrap();
                         let m: Mat3 = proj * cam.get_mat().clone() * test.get_mat().clone();
                         //NOTE: to_cols_array consumes m so that's why we have t clone although hin this case it's kind of bas it's not the end of the world ( we probably wanted to change stuff ( multiply it by other matrices and change it's value before passing it ) and have our own mat anyway plus it's only like 9 floats )
-                        test.get_program().set_uniform_mat3_f32(i, &m.to_cols_array());
+                        program.set_uniform_mat3_f32(i, &m.to_cols_array());
                     }
 
                     test.render().unwrap();
 
-                    t.bind_texture_for_sampling(apple.get_program().get_sampler_id("obj_tex").unwrap());
+                    t.bind_texture_for_sampling(program.get_sampler_id("obj_tex").unwrap());
 
-                    apple.bind().unwrap();
+                    apple.bind_model();
                     {
-                        let i: i32 = i32::try_from(apple.get_program().get_uniform_id("mvp").unwrap()).unwrap();
+                        let i: i32 = i32::try_from(program.get_uniform_id("mvp").unwrap()).unwrap();
                         let m: Mat3 = proj * cam.get_mat().clone() * apple.get_mat().clone();
                         //NOTE: to_cols_array consumes m so that's why we have t clone although hin this case it's kind of bas it's not the end of the world ( we probably wanted to change stuff ( multiply it by other matrices and change it's value before passing it ) and have our own mat anyway plus it's only like 9 floats )
-                        apple.get_program().set_uniform_mat3_f32(i, &m.to_cols_array());
+                        program.set_uniform_mat3_f32(i, &m.to_cols_array());
                     }
 
                     apple.render().unwrap();

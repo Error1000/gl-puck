@@ -24,8 +24,9 @@ use std::{fs, io};
 fn normalise_and_center(pos: &mut Vec<f32>) -> &mut Vec<f32> {
     let mut ma: f32 = 0.0;
     let mut mi: f32 = pos[0];
-    // TODO: Make sure this optimisation dosen't introduce a bug
+    // Assumes ma != mi
     for e in pos.iter() {
+        // TODO: Make sure this optimisation dosen't introduce a bug
         if *e > ma {
             ma = *e;
         } else if *e < mi {

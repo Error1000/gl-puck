@@ -10,18 +10,18 @@ use std::str::FromStr;
 pub struct VertexAttrib<T> {
     elem_per_vert: u8,
     attribs: Vec<T>,
-    token: &'static str,
+    token: String,
 }
 
 impl<T> VertexAttrib<T> {
-    pub fn new(elem_per_vert: u8, token: &'static str) -> Self {
+    pub fn new(elem_per_vert: u8, token: &str) -> Self {
         if elem_per_vert == 0 {
             panic!("Number of elements per vertex cannot be 0!");
         }
         VertexAttrib {
             elem_per_vert,
             attribs: Vec::<T>::new(),
-            token,
+            token: token.to_owned(),
         }
     }
 
@@ -36,7 +36,7 @@ impl<T> VertexAttrib<T> {
         &mut self.attribs
     }
 
-    pub fn get_token(self: &Self) -> &'static str {
+    pub fn get_token(self: &Self) -> &String {
         &self.token
     }
     pub fn get_elem_per_vert(self: &Self) -> u8 {
@@ -126,12 +126,13 @@ where
         *new_ind += 1;
         Ok(())
     }
-    /// NOTE: For some reason turning optimisations on makes this go much, much faster so as a tem pworkaround until either the language gets better optimisations or i improve my code, the debug builds are set to optimisation level 2
+
+    /// NOTE: For some reason turning optimisations on makes this go much, much faster so as a temp workaround until either the language gets better optimisations or i improve my code, the debug builds are set to optimisation level 2
     pub fn load(self: &mut Self, f: &File) -> io::Result<Vec<String>> {
         let reader = BufReader::new(f);
         let mut v: Vec<VertexAttrib<T>> = Vec::new();
         for a in &self.attribs {
-            v.push(VertexAttrib::new(a.elem_per_vert, a.token));
+            v.push(VertexAttrib::new(a.elem_per_vert, &a.token));
         }
         let mut ordered_data = ObjData::<T, U>::new(v);
         let mut unrecognised_tokens = Vec::<String>::new();

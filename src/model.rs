@@ -129,14 +129,17 @@ where
             .adapt_bound_mesh_to_attrib::<AT>(attrib, attrib_loc)
     }
 
+    #[inline(always)]
     fn adapt_bound_model_to_program(self: &mut Self, p: &Program) -> Result<(), ()> {
         self.mesh.adapt_bound_mesh_to_program(p)
     }
+
+    #[inline(always)]
     fn bind_model(self: &Self) {
         self.mesh.bind_mesh();
     }
 
-    #[inline]
+    #[inline(always)]
     fn render(self: &Self) -> Result<(), ()> {
         self.mesh.render_bound_mesh_with_bound_shader()?;
         Ok(())
