@@ -3,6 +3,7 @@ use gl_wrapper::unwrap_result_or_ret;
 use glutin::event::VirtualKeyCode;
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
+/// TODO: Refactor!
 
 pub struct KeyboardHandler {
     keyb: Vec<bool>,
@@ -30,7 +31,12 @@ impl KeyboardHandler {
                     self.keyb.resize(i + 1, false);
                 }
                 self.keyb[i] = true;
-                self.map.insert(v.unwrap(), *x);
+                match v {
+                    Some(d) => {
+                        self.map.insert(*d, *x);
+                    }
+                    None => {}
+                }
             }
             glutin::event::KeyboardInput {
                 scancode: x,

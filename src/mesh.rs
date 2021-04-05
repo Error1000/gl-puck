@@ -43,7 +43,10 @@ where
         AT: HasGLEnum,
     {
         att.bind_bo();
-        match self.vao.attach_bound_vbo_to_bound_vao(att, att_loc, 0, false) {
+        match self
+            .vao
+            .attach_bound_vbo_to_bound_vao(att, att_loc, 0, false)
+        {
             Ok(()) => (),
             Err(_) => return Err(()),
         }

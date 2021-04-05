@@ -4,13 +4,14 @@ extern crate glutin;
 extern crate image;
 
 use gl_puck::model;
-use gl_puck::model::{World2D, Model};
+use gl_puck::model::{Model, World2D};
 use gl_puck::{input, mesh};
 use gl_wrapper::render::texture::TextureFunc;
 use gl_wrapper::render::*;
 use gl_wrapper::util::*;
 
 use glutin::dpi::PhysicalSize;
+use glutin::platform::run_return::EventLoopExtRunReturn;
 use std::convert::{TryFrom, TryInto};
 
 use gl::types::*;
@@ -24,7 +25,6 @@ use std::path::Path;
 
 use gl_puck::camera::Camera2D;
 use glam::{Mat3, Vec2};
-use glutin::platform::desktop::EventLoopExtDesktop;
 use std::time::Instant;
 
 // Vertex data
@@ -100,7 +100,7 @@ void main() {
 
     // Create GLSL shaders
     println!("Loading shaders ...");
-    let mut program ={
+    let mut program = {
         // Program and shader provide their own error messages
         let vs = shader::VertexShader::new(VS_SRC).unwrap();
         let fs = shader::FragmentShader::new(FS_SRC).unwrap();
@@ -127,7 +127,7 @@ void main() {
     let t = {
         let im = image::open(&Path::new("apple.png"))
             .expect("Failed to load texture! Are you sure it exists?")
-            .into_rgba();
+            .into_rgba8();
         texture::Texture2D::with_data(
             [
                 im.width().try_into().unwrap(),
@@ -142,7 +142,7 @@ void main() {
     let mut tile = {
         let im = image::open(&Path::new("t.jpg"))
             .expect("Failed to load texture! Are you sure it exists?")
-            .into_rgba();
+            .into_rgba8();
         texture::Texture2D::with_data(
             [
                 im.width().try_into().unwrap(),
@@ -161,41 +161,38 @@ void main() {
     // Load mesh data ( indices, vertices, uv data )
     println!("Loading mesh ...");
     // NOTE: Creating a vbo with data auto binds it, creating a vbo using new does not
-    let pos_vbo =
-        buffer_obj::VBO::<GLfloat>::with_data(&[2], &VERTEX_DATA, gl::STATIC_DRAW)
-            .expect("Failed to upload data to vbo!");
-    let tex_vbo =
-        buffer_obj::VBO::<GLfloat>::with_data(&[2], &TEX_DATA, gl::STATIC_DRAW)
-            .expect("Failed to upload data to vbo!");
-    let ind_ibo =
-        buffer_obj::IBO::<GLushort>::with_data(&IND_DATA, gl::STATIC_DRAW)
-            .expect("Failed to upload data to ibo!");
+    let pos_vbo = buffer_obj::VBO::<GLfloat>::with_data(&[2], &VERTEX_DATA, gl::STATIC_DRAW)
+        .expect("Failed to upload data to vbo!");
+    let tex_vbo = buffer_obj::VBO::<GLfloat>::with_data(&[2], &TEX_DATA, gl::STATIC_DRAW)
+        .expect("Failed to upload data to vbo!");
+    let ind_ibo = buffer_obj::IBO::<GLushort>::with_data(&IND_DATA, gl::STATIC_DRAW)
+        .expect("Failed to upload data to ibo!");
 
     let mut apple = {
-        let m = mesh::Mesh::new(
-            &ind_ibo,
-        )
-        .unwrap();
+        let m = mesh::Mesh::new(&ind_ibo).unwrap();
         model::Model2D::new(m)
     };
     apple.bind_model();
-    apple.adapt_bound_model_to_attrib(&pos_vbo, program.get_attribute_id("position").unwrap()).unwrap();
-    apple.adapt_bound_model_to_attrib(&tex_vbo, program.get_attribute_id("tex_coord").unwrap()).unwrap();
+    apple
+        .adapt_bound_model_to_attrib(&pos_vbo, program.get_attribute_id("position").unwrap())
+        .unwrap();
+    apple
+        .adapt_bound_model_to_attrib(&tex_vbo, program.get_attribute_id("tex_coord").unwrap())
+        .unwrap();
     apple.adapt_bound_model_to_program(&program).unwrap();
 
     let tex2_vbo = buffer_obj::VBO::<GLfloat>::with_data(&[2], &TEX2_DATA, gl::STATIC_DRAW)
         .expect("Failed to upload to vbo!");
 
     let mut test = {
-        let m = mesh::Mesh::new(
-            &ind_ibo,
-        )
-        .unwrap();
+        let m = mesh::Mesh::new(&ind_ibo).unwrap();
         model::Model2D::new(m)
     };
     test.bind_model();
-    test.adapt_bound_model_to_attrib(&pos_vbo, program.get_attribute_id("position").unwrap()).unwrap();
-    test.adapt_bound_model_to_attrib(&tex2_vbo, program.get_attribute_id("tex_coord").unwrap()).unwrap();
+    test.adapt_bound_model_to_attrib(&pos_vbo, program.get_attribute_id("position").unwrap())
+        .unwrap();
+    test.adapt_bound_model_to_attrib(&tex2_vbo, program.get_attribute_id("tex_coord").unwrap())
+        .unwrap();
     test.adapt_bound_model_to_program(&program).unwrap();
 
     // We need to specify it in half due to projection ( thankfully tho speeds are 1:1 )
@@ -265,7 +262,7 @@ void main() {
                         *control_flow = ControlFlow::Exit;
                     }
                     // SPEED/ apple.get_size() will make sure the camera never falls more than SPEED distance from the apple apart
-                    cam.lerp_to(apple.get_pos(), Vec2::new((SPEED/apple.get_size().x())*delta_t/1.5, (SPEED/apple.get_size().y())*delta_t), (SPEED/4.0)*delta_t/1.5/* snap range can't be bigger than speed otherwise the camera would just always snap to the target and since we know the target can only move 200.0*deltaT pixels we have to use this value as a max instead of any range we want in pixels*/);
+                    cam.lerp_to(apple.get_pos(), Vec2::new(SPEED/apple.get_size().x*delta_t/1.5, SPEED/apple.get_size().y*delta_t ), (SPEED/4.0)*delta_t/1.5/* snap range can't be bigger than speed otherwise the camera would just always snap to the target and since we know the target can only move 200.0*deltaT pixels we have to use this value as a max instead of any range we want in pixels*/);
 
                     unsafe { gl::Clear(gl::COLOR_BUFFER_BIT); }
 

@@ -7,11 +7,11 @@ use gl_puck::{mesh, model};
 use gl_wrapper::render::texture::TextureFunc;
 use gl_wrapper::render::{program, shader, texture};
 use gl_wrapper::util::buffer_obj;
-use glam::{Mat4, Vec2, Vec3, Vec3Mask};
+use glam::{Mat4, Vec2, Vec3};
 use glutin::dpi::PhysicalSize;
 use glutin::event::{Event, WindowEvent};
 use glutin::event_loop::{ControlFlow, EventLoop};
-use glutin::platform::desktop::EventLoopExtDesktop;
+use glutin::platform::run_return::EventLoopExtRunReturn;
 use glutin::window::WindowBuilder;
 use std::collections::HashSet;
 use std::convert::{TryFrom, TryInto};
@@ -133,7 +133,7 @@ fn main() -> io::Result<()> {
     let mut t = {
         let im = image::open(&Path::new(TEXTURE_FILE))
             .expect("Failed to load image!")
-            .into_rgba();
+            .into_rgba8();
         texture::Texture2D::with_data(
             [
                 im.width().try_into().unwrap(),
@@ -189,7 +189,6 @@ fn main() -> io::Result<()> {
     }
     let mut last_mouse_change: (f32, f32) = (0.0, 0.0);
     let mut in_control = false;
-    let mut active = false;
     events_loop.run_return(|event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
         match event {
@@ -212,15 +211,10 @@ fn main() -> io::Result<()> {
                     WindowEvent::KeyboardInput { input: i, .. } => {
                         keyb.handle(&i);
                     }
-                    WindowEvent::Focused(a) => {
-                        active = a;
-                    }
                     WindowEvent::CursorEntered { .. } => {
-                        if active {
                             gl_window.window().set_cursor_grab(true).unwrap();
                             gl_window.window().set_cursor_visible(false);
                             in_control = true;
-                        }
                     }
                     _ => {}
                 }
@@ -260,18 +254,12 @@ fn main() -> io::Result<()> {
                             .is_pressed(glutin::event::VirtualKeyCode::W)
                             .unwrap_or(false)
                         {
-                            cam.masked_step(
-                                Vec2::new(0.0, 0.02) / fps,
-                                Vec3Mask::new(true, false, true),
-                            );
+                            cam.masked_step(Vec2::new(0.0, 0.02) / fps, Vec3::new(1.0, 0.0, 1.0));
                         } else if keyb
                             .is_pressed(glutin::event::VirtualKeyCode::S)
                             .unwrap_or(false)
                         {
-                            cam.masked_step(
-                                Vec2::new(0.0, -0.02) / fps,
-                                Vec3Mask::new(true, false, true),
-                            );
+                            cam.masked_step(Vec2::new(0.0, -0.02) / fps, Vec3::new(1.0, 0.0, 1.0));
                         }
                         if keyb
                             .is_pressed(glutin::event::VirtualKeyCode::A)
@@ -297,7 +285,7 @@ fn main() -> io::Result<()> {
                             cam.strafe(Vec3::new(0.0, -0.02, 0.0) / fps);
                         }
                     }
-                    
+
                     last_mouse_change = (0.0, 0.0);
                     {
                         let model_mat = *model.get_mat();

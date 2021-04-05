@@ -7,12 +7,19 @@ pub struct Camera2D {
     mat: Option<Mat3>,
 }
 
-impl Default for Camera2D{
-    fn default() -> Self { Camera2D{ pos: Vec2::new(0.0, 0.0), mat: None} }
+impl Default for Camera2D {
+    fn default() -> Self {
+        Camera2D {
+            pos: Vec2::new(0.0, 0.0),
+            mat: None,
+        }
+    }
 }
 
 impl Camera2D {
-    pub fn new() -> Self { Default::default() }
+    pub fn new() -> Self {
+        Default::default()
+    }
 
     fn update_mat(self: &mut Self) {
         self.mat = Some(Mat3::from_scale_angle_translation(
@@ -75,8 +82,8 @@ pub struct Camera3D {
     up: Vec3,  // in Degrees ( not radians )
 }
 
-impl Default for Camera3D{
-    fn default() -> Self{
+impl Default for Camera3D {
+    fn default() -> Self {
         Camera3D {
             pos: Vec3::new(0.0, 0.0, 0.0),
             mat: None,
@@ -88,17 +95,19 @@ impl Default for Camera3D{
 }
 
 impl Camera3D {
-    pub fn new() -> Self { Default::default() }
+    pub fn new() -> Self {
+        Default::default()
+    }
 
     fn update_mat(self: &mut Self) {
         // Faster to cache
-        let mut rot_x = self.rot.x();
-        let rot_y = self.rot.y();
+        let mut rot_x = self.rot.x;
+        let rot_y = self.rot.y;
         if rot_x >= 89.9 {
-            self.rot.set_x(89.9);
+            self.rot.x = 89.9;
             rot_x = 89.9;
         } else if rot_x <= -89.9 {
-            self.rot.set_x(-89.9);
+            self.rot.x = -89.9;
             rot_x = -89.9;
         }
         self.looking_dir = Vec3::new(
@@ -108,8 +117,8 @@ impl Camera3D {
         );
 
         self.up = Vec3::new(
-            self.rot.z().to_radians().sin(),
-            self.rot.z().to_radians().cos(),
+            self.rot.z.to_radians().sin(),
+            self.rot.z.to_radians().cos(),
             0.0,
         );
         self.mat = Some(Mat4::look_at_lh(
@@ -135,15 +144,20 @@ impl Camera3D {
         self.mat = None;
     }
 
-    pub fn masked_step(self: &mut Self, amount: Vec2, mask: Vec3Mask) {
-        self.pos +=
-            amount.y() * (mask.select(self.looking_dir.normalize(), Vec3::new(0.0, 0.0, 0.0))).normalize();
-        self.pos -= amount.x() * self.looking_dir.cross(self.up).normalize();
+    fn scale(b: &Vec3, mut v: Vec3) -> Vec3 {
+        v.x *= b.x;
+        v.y *= b.y;
+        v.z *= b.z;
+        v
+    }
+    pub fn masked_step(self: &mut Self, amount: Vec2, mask: Vec3) {
+        self.pos += amount.y * (Self::scale(&mask, self.looking_dir.normalize())).normalize();
+        self.pos -= amount.x * self.looking_dir.cross(self.up).normalize();
         self.mat = None;
     }
 
     pub fn step(self: &mut Self, amount: Vec2) {
-        self.masked_step(amount, Vec3Mask::new(true, true, true))
+        self.masked_step(amount, Vec3::new(1.0, 1.0, 1.0))
     }
 
     pub fn rotate(self: &mut Self, r: Vec3) {
