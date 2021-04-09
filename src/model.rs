@@ -51,8 +51,8 @@ where
 {
     pub fn new(m: crate::mesh::Mesh<'a, IT>) -> Self {
         Model2D {
-            pos: Vec2::zero(),
-            aabb: Vec2::one(),
+            pos: Vec2::ZERO,
+            aabb: Vec2::ONE,
             mat: None,
             mesh: m,
         }
@@ -162,8 +162,8 @@ where
 {
     pub fn new(m: crate::mesh::Mesh<'a, IT>) -> Self {
         Model3D {
-            pos: Vec3::zero(),
-            aabb: Vec3::one(),
+            pos: Vec3::ZERO,
+            aabb: Vec3::ONE,
             mat: None,
             mesh: m,
         }
@@ -173,7 +173,7 @@ where
     fn update_mat(self: &mut Self) {
         self.mat = Some(Mat4::from_scale_rotation_translation(
             self.aabb,
-            Quat::identity(),
+            Quat::IDENTITY,
             self.pos,
         ));
     }

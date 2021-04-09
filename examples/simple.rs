@@ -107,7 +107,7 @@ void main() {
         program::Program::new(&[&vs.into(), &fs.into()]).unwrap()
     };
 
-    program.bind_program();
+    let mut program = program.bind().expect("Bind program!");
     program
         .load_attribute("position".to_owned())
         .expect("Failed to load data from shader!");
@@ -206,7 +206,7 @@ void main() {
     // NOTE: Slight hack to make sure inputs are responsive-ish( was having problems with specifying stuff inside the key down/ key up events ), should fix later, priority medium to low
     let mut keyb = input::KeyboardHandler::new();
     let mut start = Instant::now();
-    gl_wrapper::set_gl_clear_color(0.0, 0.0, 1.0, 1.0);
+    gl_wrapper::set_gl_clear_color(0.0, 0.0, 1.0, 1.0).expect("Setting clear color");
 
     const SPEED: f32 = 400.0; // pixels/second
     events_loop.run_return( |event, _, control_flow| {

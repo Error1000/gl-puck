@@ -127,7 +127,7 @@ fn main() -> io::Result<()> {
         let fs = shader::FragmentShader::new(fs_source.as_ref()).unwrap();
         program::Program::new(&[&vs.into(), &fs.into()]).unwrap()
     };
-    program.bind_program();
+    let mut program = program.bind().expect("Bind program!");
     program.auto_load_all(30).unwrap();
 
     let mut t = {
@@ -183,7 +183,7 @@ fn main() -> io::Result<()> {
     let mut keyb = KeyboardHandler::new();
 
     let mut start = Instant::now();
-    gl_wrapper::set_gl_clear_color(178.0 / 255.0, 1.0, 1.0, 0.0);
+    gl_wrapper::set_gl_clear_color(178.0 / 255.0, 1.0, 1.0, 0.0).expect("Setting clear color!");
     unsafe {
         gl::Enable(gl::DEPTH_TEST);
     }

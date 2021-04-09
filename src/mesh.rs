@@ -68,7 +68,7 @@ where
             Err(_) => return Err(()),
         };
         unsafe {
-            gl::DrawElements(gl::TRIANGLES, s, IT::get_gl_enum(), ptr::null());
+            gl::DrawElements(gl::TRIANGLES, s, IT::get_gl_type(), ptr::null());
         }
         Ok(())
     }
