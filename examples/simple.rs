@@ -6,7 +6,7 @@ extern crate image;
 use gl_puck::model;
 use gl_puck::model::{Model, World2D};
 use gl_puck::{input, mesh};
-use gl_wrapper::render::texture::TextureFunc;
+use gl_wrapper::{set_gl_draw_size};
 use gl_wrapper::render::*;
 use gl_wrapper::util::*;
 
@@ -26,6 +26,10 @@ use std::path::Path;
 use gl_puck::camera::Camera2D;
 use glam::{Mat3, Vec2};
 use std::time::Instant;
+use gl_wrapper::render::program::*;
+use gl_wrapper::render::texture::*;
+use gl_wrapper::util::aggregator_obj::*;
+use gl_wrapper::util::buffer_obj::*;
 
 // Vertex data
 static VERTEX_DATA: [GLfloat; 8] = [-1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0];
@@ -52,6 +56,13 @@ static IND_DATA: [GLushort; 6] = [0, 1, 3, 1, 2, 3];
 
 // TODO List: Add mesh algorithms ( mesh simplification, .. ), add view frustum culling for 2d and 3d
 fn main() {
+    let mut prog_bouncer = ProgramBouncer::new();
+    let mut tex_bouncer0 = TextureBouncer::<0>::new();
+    let mut tex_bouncer1 = TextureBouncer::<1>::new();
+    let mut vao_bouncer  = VAOBouncer::new();
+    let mut vbo_bouncer  = VBOBouncer::new();
+    let mut ibo_bouncer  = IBOBouncer::new();
+
     let mut window_width: f32 = 400.0;
     let mut window_height: f32 = 400.0;
     let mut events_loop = EventLoop::new();
@@ -91,8 +102,8 @@ void main() {
 
     static FS_SRC: &str = "
 #version 150
-out vec4 out_color;
 uniform sampler2D obj_tex;
+out vec4 out_color;
 in vec2 pass_tex_coord;
 void main() {
     out_color = texture2D(obj_tex, pass_tex_coord);
@@ -107,7 +118,7 @@ void main() {
         program::Program::new(&[&vs.into(), &fs.into()]).unwrap()
     };
 
-    let mut program = program.bind().expect("Bind program!");
+    let mut program = program.bind_mut(&mut prog_bouncer);
     program
         .load_attribute("position".to_owned())
         .expect("Failed to load data from shader!");
@@ -129,10 +140,11 @@ void main() {
             .expect("Failed to load texture! Are you sure it exists?")
             .into_rgba8();
         texture::Texture2D::with_data(
+            &mut tex_bouncer0,
             [
                 im.width().try_into().unwrap(),
                 im.height().try_into().unwrap(),
-            ],
+               ],
             im.as_ref(),
             gl::RGBA,
         )
@@ -144,6 +156,7 @@ void main() {
             .expect("Failed to load texture! Are you sure it exists?")
             .into_rgba8();
         texture::Texture2D::with_data(
+            &mut tex_bouncer0,
             [
                 im.width().try_into().unwrap(),
                 im.height().try_into().unwrap(),
@@ -153,52 +166,71 @@ void main() {
         )
         .expect("Failed to create texture!")
     };
+    {
+    let mut tile = tile.bind_mut(&mut tex_bouncer0);
     tile.set_x_wrap_of_bound_tex(gl::REPEAT.try_into().unwrap());
     tile.set_y_wrap_of_bound_tex(gl::REPEAT.try_into().unwrap());
+    }
 
     println!("Done!");
 
     // Load mesh data ( indices, vertices, uv data )
     println!("Loading mesh ...");
     // NOTE: Creating a vbo with data auto binds it, creating a vbo using new does not
-    let pos_vbo = buffer_obj::VBO::<GLfloat>::with_data(&[2], &VERTEX_DATA, gl::STATIC_DRAW)
+    let pos_vbo = buffer_obj::VBO::<GLfloat>::with_data(&mut vbo_bouncer, &[2], &VERTEX_DATA, gl::STATIC_DRAW)
         .expect("Failed to upload data to vbo!");
-    let tex_vbo = buffer_obj::VBO::<GLfloat>::with_data(&[2], &TEX_DATA, gl::STATIC_DRAW)
+    let tex_vbo = buffer_obj::VBO::<GLfloat>::with_data(&mut vbo_bouncer, &[2], &TEX_DATA, gl::STATIC_DRAW)
         .expect("Failed to upload data to vbo!");
-    let ind_ibo = buffer_obj::IBO::<GLushort>::with_data(&IND_DATA, gl::STATIC_DRAW)
+    let ind_ibo = buffer_obj::IBO::<GLushort>::with_data(&mut ibo_bouncer, &IND_DATA, gl::STATIC_DRAW)
         .expect("Failed to upload data to ibo!");
 
     let mut apple = {
-        let m = mesh::Mesh::new(&ind_ibo).unwrap();
-        model::Model2D::new(m)
+        let m = mesh::UnboundMesh::new(&ind_ibo);
+        model::UnboundModel2D::new(m)
     };
-    apple.bind_model();
-    apple
-        .adapt_bound_model_to_attrib(&pos_vbo, program.get_attribute_id("position").unwrap())
-        .unwrap();
-    apple
-        .adapt_bound_model_to_attrib(&tex_vbo, program.get_attribute_id("tex_coord").unwrap())
-        .unwrap();
-    apple.adapt_bound_model_to_program(&program).unwrap();
+        // We need to specify it in half due to projection ( thankfully tho speeds are 1:1 )
+    // TODO: Fix this
+    {
+    let mut apple = apple.bind(&mut vao_bouncer, &mut ibo_bouncer);
 
-    let tex2_vbo = buffer_obj::VBO::<GLfloat>::with_data(&[2], &TEX2_DATA, gl::STATIC_DRAW)
+    let pos_vbo = pos_vbo.bind(&mut vbo_bouncer);
+    apple
+        .adapt_model_to_attrib(&pos_vbo, program.get_attribute_id("position").unwrap())
+        .unwrap();
+
+    let tex_vbo = tex_vbo.bind(&mut vbo_bouncer);
+    apple
+        .adapt_model_to_attrib(&tex_vbo, program.get_attribute_id("tex_coord").unwrap())
+        .unwrap();
+
+    apple.adapt_model_to_program(&program).unwrap();
+    apple.set_size(Vec2::new(400.0/2.0, 400.0/2.0));
+
+    }
+
+    let tex2_vbo = buffer_obj::VBO::<GLfloat>::with_data(&mut vbo_bouncer, &[2], &TEX2_DATA, gl::STATIC_DRAW)
         .expect("Failed to upload to vbo!");
 
     let mut test = {
-        let m = mesh::Mesh::new(&ind_ibo).unwrap();
-        model::Model2D::new(m)
-    };
-    test.bind_model();
-    test.adapt_bound_model_to_attrib(&pos_vbo, program.get_attribute_id("position").unwrap())
+        let m = mesh::UnboundMesh::new(&ind_ibo);
+        model::UnboundModel2D::new(m)
+    };{
+    let mut test= test.bind(&mut vao_bouncer, &mut ibo_bouncer);
+    
+    let pos_vbo = pos_vbo.bind(&mut vbo_bouncer);
+    test.adapt_model_to_attrib(&pos_vbo, program.get_attribute_id("position").unwrap())
         .unwrap();
-    test.adapt_bound_model_to_attrib(&tex2_vbo, program.get_attribute_id("tex_coord").unwrap())
+    
+        let tex2_vbo = tex2_vbo.bind(&mut vbo_bouncer);
+    test.adapt_model_to_attrib(&tex2_vbo, program.get_attribute_id("tex_coord").unwrap())
         .unwrap();
-    test.adapt_bound_model_to_program(&program).unwrap();
+    
+    test.adapt_model_to_program(&program).unwrap();
+    
 
-    // We need to specify it in half due to projection ( thankfully tho speeds are 1:1 )
-    // TODO: Fix this
-    apple.set_size(Vec2::new(400.0 / 2.0, 400.0 / 2.0));
     test.set_size(apple.get_size().clone() * TEST_ZOOM_OUT); // make sure tile is the same size as apple
+    }
+
     println!("Done!");
 
     println!("Showing window!");
@@ -266,9 +298,11 @@ void main() {
 
                     unsafe { gl::Clear(gl::COLOR_BUFFER_BIT); }
 
-                    tile.bind_texture_for_sampling(program.get_sampler_id("obj_tex").unwrap());
+                    assert_eq!(program.get_sampler_id("obj_tex").unwrap(), 1);
+                    
+                    let mut tile = tile.bind(&mut tex_bouncer1);
 
-                    test.bind_model();
+                    let mut test= test.bind(&mut vao_bouncer, &mut ibo_bouncer);
                     {
                         let i: i32 = i32::try_from(program.get_uniform_id("mvp").unwrap()).unwrap();
                         let m: Mat3 = proj * cam.get_mat().clone() * test.get_mat().clone();
@@ -276,11 +310,11 @@ void main() {
                         program.set_uniform_mat3_f32(i, &m.to_cols_array());
                     }
 
-                    test.render().unwrap();
+                    test.render(&program).unwrap();
 
-                    t.bind_texture_for_sampling(program.get_sampler_id("obj_tex").unwrap());
+                    let mut t = t.bind(&mut tex_bouncer1);
 
-                    apple.bind_model();
+                    let mut apple = apple.bind(&mut vao_bouncer, &mut ibo_bouncer);
                     {
                         let i: i32 = i32::try_from(program.get_uniform_id("mvp").unwrap()).unwrap();
                         let m: Mat3 = proj * cam.get_mat().clone() * apple.get_mat().clone();
@@ -288,7 +322,7 @@ void main() {
                         program.set_uniform_mat3_f32(i, &m.to_cols_array());
                     }
 
-                    apple.render().unwrap();
+                    apple.render(&program).unwrap();
 
                     gl_window.swap_buffers().unwrap();
                     start = Instant::now();

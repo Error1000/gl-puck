@@ -295,7 +295,7 @@ fn main() -> io::Result<()> {
                             (proj * *cam.get_mat() * model_mat).as_ref(),
                         );
                     }
-                    model.render().unwrap();
+                    model.render(&program).unwrap();
                     gl_window.swap_buffers().unwrap();
                     unsafe {
                         gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
