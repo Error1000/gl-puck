@@ -2,9 +2,9 @@ use std::convert::TryInto;
 use std::ptr;
 
 use gl::types::*;
-use gl_wrapper::render::program::{BoundProgram, Program};
+use gl_wrapper::render::program::Program;
 use gl_wrapper::util::aggregator_obj::VAO;
-use gl_wrapper::util::buffer_obj::{BOFunc, IBO, VBO};
+use gl_wrapper::util::buffer_obj::{BOFunc, VBO};
 use gl_wrapper::HasGLEnum;
 use gl_wrapper::util::aggregator_obj::*;
 use gl_wrapper::util::buffer_obj::*;

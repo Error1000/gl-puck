@@ -6,7 +6,6 @@ extern crate image;
 use gl_puck::model;
 use gl_puck::model::{Model, World2D};
 use gl_puck::{input, mesh};
-use gl_wrapper::{set_gl_draw_size};
 use gl_wrapper::render::*;
 use gl_wrapper::util::*;
 
@@ -57,8 +56,6 @@ static IND_DATA: [GLushort; 6] = [0, 1, 3, 1, 2, 3];
 // TODO List: Add mesh algorithms ( mesh simplification, .. ), add view frustum culling for 2d and 3d
 fn main() {
     let mut prog_bouncer = ProgramBouncer::new();
-    let mut tex_bouncer0 = TextureBouncer::<0>::new();
-    let mut tex_bouncer1 = TextureBouncer::<1>::new();
     let mut vao_bouncer  = VAOBouncer::new();
     let mut vbo_bouncer  = VBOBouncer::new();
     let mut ibo_bouncer  = IBOBouncer::new();
@@ -120,17 +117,23 @@ void main() {
 
     let mut program = program.bind_mut(&mut prog_bouncer);
     program
-        .load_attribute("position".to_owned())
+        .load_attribute("position")
         .expect("Failed to load data from shader!");
     program
-        .load_attribute("tex_coord".to_owned())
+        .load_attribute("tex_coord")
         .expect("Failed to load data from shader!");
     program
-        .load_uniform("mvp".to_owned())
+        .load_uniform("mvp")
         .expect("Failed to load data form shader!");
     program
-        .load_sampler("obj_tex".to_owned())
+        .load_sampler("obj_tex")
         .expect("Failed to load data from shader!");
+
+    const TUID: usize = 1;
+    let mut tex_bouncer = TextureBouncer::<TUID>::new();
+    { let id = program.get_sampler_id("obj_tex").unwrap().try_into().unwrap();
+    program.set_uniform_i32(id, TUID.try_into().unwrap()); }
+
     println!("Done!");
 
     // Load textures
@@ -140,7 +143,7 @@ void main() {
             .expect("Failed to load texture! Are you sure it exists?")
             .into_rgba8();
         texture::Texture2D::with_data(
-            &mut tex_bouncer0,
+            &mut tex_bouncer,
             [
                 im.width().try_into().unwrap(),
                 im.height().try_into().unwrap(),
@@ -156,7 +159,7 @@ void main() {
             .expect("Failed to load texture! Are you sure it exists?")
             .into_rgba8();
         texture::Texture2D::with_data(
-            &mut tex_bouncer0,
+            &mut tex_bouncer,
             [
                 im.width().try_into().unwrap(),
                 im.height().try_into().unwrap(),
@@ -167,7 +170,7 @@ void main() {
         .expect("Failed to create texture!")
     };
     {
-    let mut tile = tile.bind_mut(&mut tex_bouncer0);
+    let mut tile = tile.bind_mut(&mut tex_bouncer);
     tile.set_x_wrap_of_bound_tex(gl::REPEAT.try_into().unwrap());
     tile.set_y_wrap_of_bound_tex(gl::REPEAT.try_into().unwrap());
     }
@@ -300,7 +303,7 @@ void main() {
 
                     assert_eq!(program.get_sampler_id("obj_tex").unwrap(), 1);
                     
-                    let mut tile = tile.bind(&mut tex_bouncer1);
+                    let _tile = tile.bind(&mut tex_bouncer);
 
                     let mut test= test.bind(&mut vao_bouncer, &mut ibo_bouncer);
                     {
@@ -312,7 +315,7 @@ void main() {
 
                     test.render(&program).unwrap();
 
-                    let mut t = t.bind(&mut tex_bouncer1);
+                    let _t = t.bind(&mut tex_bouncer);
 
                     let mut apple = apple.bind(&mut vao_bouncer, &mut ibo_bouncer);
                     {

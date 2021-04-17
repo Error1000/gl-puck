@@ -4,9 +4,8 @@ use gl_puck::input::KeyboardHandler;
 use gl_puck::model::{Model, World3D};
 use gl_puck::obj::{ObjData, VertexAttrib};
 use gl_puck::{mesh, model};
-use gl_wrapper::render::texture::TextureFunc;
 use gl_wrapper::render::{program, shader, texture};
-use gl_wrapper::util::buffer_obj;
+use gl_wrapper::util::{buffer_obj, aggregator_obj};
 use glam::{Mat4, Vec2, Vec3};
 use glutin::dpi::PhysicalSize;
 use glutin::event::{Event, WindowEvent};
@@ -51,15 +50,20 @@ fn invert_tex(tex: &mut Vec<f32>) -> &mut Vec<f32> {
 
 // TODO: Add better input handling( simpler than glutin )( look at create gilrs for controller input maybe ), maybe obscure the glutin event loop a bit more, figure out why movement is jittery even though i'm adapting speed to deltaT in-between frames ( possibly not my fault and it's just that the timer might be inaccurate but it seems way too off for that )
 fn main() -> io::Result<()> {
+    let mut prog_bouncer = program::ProgramBouncer::new();
+    let mut vao_bouncer  = aggregator_obj::VAOBouncer::new();
+    let mut vbo_bouncer  = buffer_obj::VBOBouncer::new();
+    let mut ibo_bouncer  = buffer_obj::IBOBouncer::new();
+
     //RESOURCES
     let fov: f32 = 70.0_f32.to_radians();
     const Z_NEAR: f32 = 0.001;
     let mut w_width: u32 = 400;
     let mut w_height: u32 = 400;
-    const OBJ_FILE: &str = "lost_empire.obj";
+    const OBJ_FILE: &str = "rungholt.obj";
     const FRAGMENT_SHADER_FILE: &str = "fragmentShader.glsl";
     const VERTEX_SHADER_FILE: &str = "vertexShader.glsl";
-    const TEXTURE_FILE: &str = "lost_empire-RGBA.png";
+    const TEXTURE_FILE: &str = "rungholt-RGBA.png";
     const MOUSE_SENSITIVITY: f32 = 12.0;
 
     let mut events_loop = EventLoop::new();
@@ -102,18 +106,20 @@ fn main() -> io::Result<()> {
 
         (
             buffer_obj::VBO::<GLfloat>::with_data(
+                &mut vbo_bouncer,
                 &[3],
                 normalise_and_center(o.attribs[0].get_vals()).as_slice(),
                 gl::STATIC_DRAW,
             )
             .expect("Failed to create pos_vbo!"),
             buffer_obj::VBO::<GLfloat>::with_data(
+                &mut vbo_bouncer,
                 &[2],
                 invert_tex(o.attribs[1].get_vals()).as_slice(),
                 gl::STATIC_DRAW,
             )
             .expect("Failed to create tex_vbo!"),
-            buffer_obj::IBO::<GLuint>::with_data(&o.indicies.as_slice(), gl::STATIC_DRAW)
+            buffer_obj::IBO::<GLuint>::with_data(&mut ibo_bouncer, &o.indicies.as_slice(), gl::STATIC_DRAW)
                 .expect("Failed to create ind_ibo!"),
         )
     };
@@ -127,15 +133,22 @@ fn main() -> io::Result<()> {
         let fs = shader::FragmentShader::new(fs_source.as_ref()).unwrap();
         program::Program::new(&[&vs.into(), &fs.into()]).unwrap()
     };
-    let mut program = program.bind().expect("Bind program!");
-    program.auto_load_all(30).unwrap();
+    let mut program = program.bind_mut(&mut prog_bouncer);
+    program.load_attribute("position").expect("Load attribute 'position'");
+    program.load_attribute("tex_coord").expect("Load attribute 'tex_coord'");
+    program.load_uniform("mvp").expect("Load uniform 'mvp'");
+    program.load_sampler("obj_tex").expect("Load sampler 'obj_tex'");
+
+    {let id = program.get_sampler_id("obj_tex").unwrap().try_into().unwrap(); program.set_uniform_i32(id, 0);}
+    let mut tex_bouncer = texture::TextureBouncer::<0>::new();
 
     let mut t = {
         let im = image::open(&Path::new(TEXTURE_FILE))
             .expect("Failed to load image!")
             .into_rgba8();
         texture::Texture2D::with_data(
-            [
+                &mut tex_bouncer,
+        [
                 im.width().try_into().unwrap(),
                 im.height().try_into().unwrap(),
             ],
@@ -144,38 +157,35 @@ fn main() -> io::Result<()> {
         )
         .expect("Failed to create texture")
     };
+    let mut t = t.bind_mut(&mut tex_bouncer);
     t.set_mag_filter_of_bound_tex(gl::NEAREST);
     t.set_min_filter_of_bound_tex(gl::NEAREST);
 
     let mut model = {
-        let m = mesh::Mesh::new(&ind_ibo).unwrap();
-        model::Model3D::new(m)
+        let m = mesh::UnboundMesh::new(&ind_ibo);
+        model::UnboundModel3D::new(m)
     };
-    model.bind_model();
+    let mut model = model.bind(&mut vao_bouncer, &mut ibo_bouncer);
     // Prepare model for use with program
+    let pos_vbo = pos_vbo.bind(&mut vbo_bouncer);
     model
-        .adapt_bound_model_to_attrib(
+        .adapt_model_to_attrib(
             &pos_vbo,
             program
                 .get_attribute_id("position")
                 .expect("Attribute not loaded!"),
         )
         .unwrap();
+    let tex_vbo = tex_vbo.bind(&mut vbo_bouncer);
     model
-        .adapt_bound_model_to_attrib(
+        .adapt_model_to_attrib(
             &tex_vbo,
             program
                 .get_attribute_id("tex_coord")
                 .expect("Attribute not loaded!"),
         )
         .unwrap();
-    model.adapt_bound_model_to_program(&program).unwrap();
-
-    t.bind_texture_for_sampling(
-        program
-            .get_sampler_id("obj_tex")
-            .expect("Sampler not loaded!"),
-    );
+    model.adapt_model_to_program(&program).unwrap();
 
     println!("Showing window!");
     gl_window.window().set_visible(true);
