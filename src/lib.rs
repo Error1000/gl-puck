@@ -1,8 +1,5 @@
 use glam::{Mat3, Mat4};
 
-#[macro_use]
-extern crate lazy_static;
-
 pub mod camera;
 pub mod input;
 pub mod mesh;

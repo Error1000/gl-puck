@@ -1,239 +1,230 @@
-use gl_wrapper::unwrap_option_or_ret;
-use gl_wrapper::unwrap_result_or_ret;
-use itertools::izip;
-use std::convert::TryFrom;
-use std::fmt::Debug;
-use std::fs::File;
-use std::io::{self, prelude::*, BufReader, Error, ErrorKind};
-use std::str::FromStr;
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{self, Read},
+    str::FromStr, borrow::Borrow,
+    hash::Hash, convert::TryFrom
+};
 
-pub struct VertexAttrib<T> {
-    elem_per_vert: u8,
-    attribs: Vec<T>,
-    token: String,
+use objld::LineResult;
+use rayon::prelude::*;
+
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum Dimension{OneDim = 1, TwoDim = 2, ThreeDim = 3}
+
+pub struct VertexAttribs<T> {
+    data: Vec<T>,
+    elem_per_vert: Dimension
 }
 
-impl<T> VertexAttrib<T> {
-    pub fn new(elem_per_vert: u8, token: &str) -> Self {
-        if elem_per_vert == 0 {
-            panic!("Number of elements per vertex cannot be 0!");
-        }
-        VertexAttrib {
-            elem_per_vert,
-            attribs: Vec::<T>::new(),
-            token: token.to_owned(),
-        }
-    }
-
-    pub fn len(self: &Self) -> usize {
-        self.attribs.len()
-    }
-
-    pub fn is_empty(self: &Self) -> bool {
-        self.len() == 0
-    }
-    pub fn get_vals(self: &mut Self) -> &mut Vec<T> {
-        &mut self.attribs
-    }
-
-    pub fn get_token(self: &Self) -> &String {
-        &self.token
-    }
-    pub fn get_elem_per_vert(self: &Self) -> u8 {
-        self.elem_per_vert
-    }
-}
-
-pub struct ObjData<T, U> {
-    pub attribs: Vec<VertexAttrib<T>>,
-    pub indicies: Vec<U>,
-}
-
-impl<T, U> ObjData<T, U>
-where
-    T: FromStr + Copy + Default + Debug,
-    U: FromStr + Copy + Default + TryFrom<usize>,
-{
-    pub fn new(attribs: Vec<VertexAttrib<T>>) -> Self {
-        ObjData::<T, U> {
-            attribs,
-            indicies: Vec::new(),
+impl<T> VertexAttribs<T> 
+where T: Copy + Default {
+    pub fn new(elem_per_vert: Dimension) -> Self{
+        Self{
+            data: Vec::new(),
+            elem_per_vert
         }
     }
 
-    fn compute_face(
-        self: &Self,
-        indices: Vec<&str>,
-        ordered_data: &mut ObjData<T, U>,
-        new_ind: &mut usize,
-    ) -> io::Result<()> {
-        for (index_to_parse, current_attrib, new_attrib) in
-            izip!(indices, &self.attribs, &mut ordered_data.attribs)
-        {
-            if index_to_parse.is_empty() {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    format!(
-                        "Empty ( missing ) index with token: {}!",
-                        current_attrib.token
-                    ),
-                ));
+    pub fn get_vals(&mut self) -> &mut Vec<T>{
+        &mut self.data
+    }
+
+    pub fn push1d(&mut self, element: T){
+        assert!(self.elem_per_vert == Dimension::OneDim);
+        self.data.push(element);
+    }
+
+    pub fn push2d(&mut self, element: (T, T)){
+        assert!(self.elem_per_vert == Dimension::TwoDim);
+        self.data.push(element.0);
+        self.data.push(element.1);
+    }
+
+    pub fn push3d(&mut self, element: (T, T, T)){
+        assert!(self.elem_per_vert == Dimension::ThreeDim);
+        self.data.push(element.0);
+        self.data.push(element.1);
+        self.data.push(element.2);  
+    }
+
+    pub fn get_elem_per_vert(&self) -> Dimension { self.elem_per_vert }
+
+    pub fn get(&self, ind: usize) -> Vec<T>{
+        match self.elem_per_vert{
+            Dimension::OneDim => vec![self.data[ind]],
+            Dimension::TwoDim => vec![self.data[ind*2], self.data[ind*2+1]],
+            Dimension::ThreeDim => vec![self.data[ind*3], self.data[ind*3+1], self.data[ind*3+2]],
+        }
+    }
+
+    pub fn set(&mut self, ind: usize, val: Vec<T>){
+        match self.elem_per_vert{
+            Dimension::OneDim => { self.data[ind] = val[0]; },
+            Dimension::TwoDim => { self.data[ind*2] = val[0]; self.data[ind*2+1] = val[1]; },
+            Dimension::ThreeDim => {self.data[ind*3] = val[0]; self.data[ind*3+1] = val[1]; self.data[ind*3+2] = val[2];}
+        }
+    }
+
+    pub fn resize_to(&mut self, len: usize){
+        match self.elem_per_vert{
+            Dimension::OneDim => self.data.resize(len, T::default()),
+            Dimension::TwoDim => self.data.resize(len*2, T::default()),
+            Dimension::ThreeDim => self.data.resize(len*3, T::default())
+        }
+    }
+
+    pub fn len(&self) -> usize{
+        match self.elem_per_vert{
+            Dimension::OneDim => self.data.len(),
+            Dimension::TwoDim => self.data.len()/2,
+            Dimension::ThreeDim => self.data.len()/3,
+        }
+    }
+}
+
+pub struct ObjData<T, I> {
+    pub pos_data: VertexAttribs<T>,
+    pub tex_data: Option<VertexAttribs<T>>,
+    pub norm_data: Option<VertexAttribs<T>>,
+    pub indicies: Vec<I>,
+}
+
+#[derive(Eq, PartialEq, Hash)]
+struct Vertex<T>{
+    pub pos: Vec<T>,
+    pub norm: Option<Vec<T>>,
+    pub tex: Option<Vec<T>>
+}
+
+impl<T, I> ObjData<T, I>
+where T: FromStr + Send + Copy+ PartialEq + Hash + Eq + Default, I: FromStr + Copy + Send + TryFrom<usize>{
+    pub fn new(pos_data_dim: Dimension, tex_data_dim: Option<Dimension>, norm_data_dim: Option<Dimension>) -> Self{
+        Self{
+            pos_data: VertexAttribs::new(pos_data_dim),
+            tex_data: if let Some(d) = tex_data_dim { Some(VertexAttribs::new(d)) } else {None},
+            norm_data: if let Some(d) = norm_data_dim { Some(VertexAttribs::new(d))} else {None},
+            indicies: Vec::new()
+        }
+    }
+
+    pub fn load(&mut self, f: &mut File) -> io::Result<()>{
+        let parsed: Vec<LineResult<T, isize>> = {
+            let mut lines = String::new();
+            f.read_to_string(&mut lines)?;
+            let r = objld::parse_file(lines.borrow()).collect();
+            drop(lines);
+            r
+        };
+
+        let mut vert_ind: Vec<objld::VertexIndeces<isize>> = Vec::new();
+        for line in parsed{
+            match line{
+                    LineResult::FaceLine(f) => {
+                            match f{
+                                objld::Face::Face3 { v1, v2, v3 } => { 
+                                    vert_ind.push(v1); vert_ind.push(v2); vert_ind.push(v3); 
+                                },
+                                objld::Face::Face4 { v1, v2, v3, v4 } => {
+                                    vert_ind.push(v1); vert_ind.push(v2); vert_ind.push(v3); // First triangle of square 
+                                    vert_ind.push(v3); vert_ind.push(v4); vert_ind.push(v1); // Second triangle of square
+                                }
+                            }
+                    },
+                    LineResult::VertDataLine(v) => {
+                            match v{
+                                objld::VertexData::Coord2 { x, y } if self.pos_data.get_elem_per_vert() == Dimension::TwoDim => self.pos_data.push2d((x, y)),
+                                objld::VertexData::Coord3 { x, y, z } if self.pos_data.get_elem_per_vert() == Dimension::ThreeDim => self.pos_data.push3d((x, y, z)),
+                                objld::VertexData::Normal { x, y, z } => {
+                                    if let Some(n) = &mut self.norm_data{
+                                        if n.get_elem_per_vert() == Dimension::ThreeDim {
+                                            n.push3d((x, y, z));
+                                        }
+                                    }
+                                },
+                                objld::VertexData::TextureCoord3 { u, v, w } => {
+                                    if let Some(t) = &mut self.tex_data{
+                                        if t.get_elem_per_vert() == Dimension::ThreeDim {
+                                            t.push3d((u, v, w));
+                                        }
+                                    }
+                                },
+                                objld::VertexData::TextureCoord2 { u, v } => {
+                                    if let Some(t) = &mut self.tex_data{
+                                        if t.get_elem_per_vert() == Dimension::TwoDim {
+                                            t.push2d((u, v));
+                                        }
+                                    } 
+                                },
+                                objld::VertexData::TextureCoord1 { u } => {
+                                    if let Some(t) = &mut self.tex_data{
+                                        if t.get_elem_per_vert() == Dimension::OneDim {
+                                            t.push1d(u);
+                                        }
+                                    } 
+                                },
+                                _ => {}
+                            }
+                    },
+                    LineResult::Error(_e) =>{ }, // FIXME: Should find a way to not avoid errors
+                    LineResult::NoData => {}
             }
+        }
 
-            let e = Err(Error::new(
-                ErrorKind::InvalidData,
-                format!(
-                    "Parsing failed for index with token: {}!",
-                    current_attrib.token
-                ),
-            ));
-            let iind = if index_to_parse.starts_with('-') {
-                (current_attrib.len() / current_attrib.elem_per_vert as usize)
-                    - unwrap_result_or_ret!(index_to_parse[1..].parse::<usize>(), e)
-            } else {
-                unwrap_result_or_ret!(index_to_parse.parse::<usize>(), e) - 1
+        let mut h: HashMap<Vertex<T>, usize> = HashMap::new();
+        let mut curr_ind: usize = 0;
+
+        for v in vert_ind {
+            let process_index = |ind: isize, data_len: usize| -> usize{
+                if ind < 0 { (data_len as isize + ind) as usize } else {ind as usize}
             };
-
-            if new_attrib.len() <= (*new_ind + 1) * current_attrib.elem_per_vert as usize {
-                new_attrib.attribs.resize(
-                    (*new_ind + 1) * current_attrib.elem_per_vert as usize,
-                    Default::default(),
-                );
-            }
-            for jij in 0..current_attrib.elem_per_vert as usize {
-                new_attrib.attribs[*new_ind * current_attrib.elem_per_vert as usize + jij] = *unwrap_option_or_ret!(
-                    current_attrib
-                        .attribs
-                        .get(iind * current_attrib.elem_per_vert as usize + jij),
-                    Err(Error::new(ErrorKind::InvalidData, "Index out of bounds!"))
-                );
+    
+            let loaded_vert = Vertex::<T>{
+                pos: self.pos_data.get(process_index(v.coord_rindex, self.pos_data.len())),
+                norm: if let Some(norm_index) = v.normal_rindex{
+                    if let Some(norms) = &mut self.norm_data{
+                        Some(norms.get(process_index(norm_index, norms.len())))
+                    }else {None}
+                } else {None},
+                tex: if let Some(tex_index) = v.texcoord_rindex{
+                    if let Some(texs) = &mut self.tex_data{
+                        Some(texs.get(process_index(tex_index, texs.len())))
+                    }else {None}
+                } else {None},
+            };
+            if let Some(already_existing_ind) = h.get(&loaded_vert){
+                self.indicies.push(I::try_from(*already_existing_ind).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Indeces too big!"))?);
+            }else{
+                h.insert(loaded_vert, curr_ind);
+                self.indicies.push(I::try_from(curr_ind).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Indeces too big!"))?);
+                curr_ind += 1;
             }
         }
+        // Clean up
+        self.pos_data = VertexAttribs::new(self.pos_data.get_elem_per_vert());
+        self.norm_data = self.norm_data.as_ref().map(|inner|VertexAttribs::<T>::new(inner.get_elem_per_vert()));
+        self.tex_data = self.tex_data.as_ref().map(|inner|VertexAttribs::<T>::new(inner.get_elem_per_vert()));
 
-        ordered_data.indicies.push(match U::try_from(*new_ind) {
-            Ok(val) => val,
-            Err(_) => {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    format!(
-                        "Data from file does not fit in index type, index:{}!",
-                        *new_ind
-                    ),
-                ))
+        self.pos_data.resize_to(h.len());
+        self.norm_data.as_mut().map(|v|{v.resize_to(h.len()); v});
+        self.tex_data.as_mut().map(|v|{v.resize_to(h.len()); v});
+
+        for (v, i) in h {
+            self.pos_data.set(i, v.pos);
+            if let Some(texs) = &mut self.tex_data{
+                if let Some(new_tex) = v.tex{
+                    texs.set(i, new_tex);
+                }              
             }
-        });
 
-        *new_ind += 1;
+            if let Some(norms) = &mut self.norm_data{
+                if let Some(new_norm) = v.norm{
+                    norms.set(i, new_norm);
+                }              
+            }
+        }
         Ok(())
     }
-
-    /// NOTE: For some reason turning optimisations on makes this go much, much faster so as a temp workaround until either the language gets better optimisations or i improve my code, the debug builds are set to optimisation level 2
-    pub fn load(self: &mut Self, f: &File) -> io::Result<Vec<String>> {
-        let reader = BufReader::new(f);
-        let mut v: Vec<VertexAttrib<T>> = Vec::new();
-        for a in &self.attribs {
-            v.push(VertexAttrib::new(a.elem_per_vert, &a.token));
-        }
-        let mut ordered_data = ObjData::<T, U>::new(v);
-        let mut unrecognised_tokens = Vec::<String>::new();
-
-        let mut global_ind: usize = 0;
-        for line in reader.lines() {
-            let unwrapped_line = String::from(line?.trim());
-            if unwrapped_line.is_empty() {
-                continue;
-            }
-            let mut ar = unwrapped_line.split_whitespace();
-
-            let first_word = unwrap_option_or_ret!(
-                ar.next(),
-                Err(Error::new(
-                    ErrorKind::UnexpectedEof,
-                    "Expected identifier got eof!"
-                ))
-            )
-            .trim();
-
-            if first_word == "#" {
-                continue;
-            }
-            let mut recon = false;
-
-            for attrib in &mut self.attribs {
-                if first_word == attrib.token {
-                    recon = true;
-                    for _ in 0..attrib.elem_per_vert {
-                        let nxt = unwrap_option_or_ret!(
-                            ar.next(),
-                            Err(Error::new(
-                                ErrorKind::UnexpectedEof,
-                                "Expected vertex data got eof!"
-                            ))
-                        );
-                        attrib.attribs.push(match nxt.parse::<T>() {
-                            Ok(val) => val,
-                            Err(_) => {
-                                return Err(Error::new(
-                                    ErrorKind::InvalidData,
-                                    format!(
-                                        "Invalid vertex position value, token:{}!",
-                                        attrib.token
-                                    ),
-                                ))
-                            }
-                        });
-                    }
-                }
-            }
-
-            if first_word == "f" {
-                recon = true;
-                for a in &self.attribs {
-                    if a.is_empty() {
-                        return Err(Error::new(
-                            ErrorKind::InvalidData,
-                            format!(
-                                "No indices in file with token: {} even though requested!",
-                                a.token
-                            ),
-                        ));
-                    }
-                }
-
-                let data = ar.collect::<Vec<&str>>();
-                if data.len() != 3 && data.len() != 4 {
-                    return Err(Error::new(ErrorKind::InvalidData, "Malformed face, this loader only supports 3 vertices or 4 vertices per face!"));
-                }
-
-                for vert in [data[0], data[1], data[2]].iter_mut() {
-                    self.compute_face(
-                        vert.split('/').collect::<Vec<&str>>(),
-                        &mut ordered_data,
-                        &mut global_ind,
-                    )?;
-                    global_ind += 1;
-                }
-                if data.len() == 4 {
-                    for vert in [data[0], data[3], data[2]].iter_mut() {
-                        self.compute_face(
-                            vert.split('/').collect::<Vec<&str>>(),
-                            &mut ordered_data,
-                            &mut global_ind,
-                        )?;
-                        global_ind += 1;
-                    }
-                }
-            }
-            if !recon {
-                unrecognised_tokens.push(String::from(first_word));
-                //eprintln!("Unrecognised token in obj file: {}, skipping line: \"{}\" ...", first_word, unwrapped_line);
-            }
-        }
-        *self = ordered_data;
-        Ok(unrecognised_tokens)
-    }
-
-    pub fn dedup(self: &mut Self) {
-        unimplemented!();
-    }
 }
+ 

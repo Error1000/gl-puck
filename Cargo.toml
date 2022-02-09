@@ -13,16 +13,15 @@ image = "*"
 gl-wrapper = { git = "https://ihvl.go.ro/gitea/Error1000/gl-wrapper.git" }
 # Utils
 glam = "*"
-itertools = "*"
 one_user = "*"
-bitvec = "*"
-lazy_static = "*"
+objld = "*"
+rayon = "*"
 
 [build-dependencies]
 gl_generator = "*"
 
 [profile.dev]
-opt-level=2
+opt-level=3
 debug = true
 
 [profile.release]
