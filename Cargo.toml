@@ -10,7 +10,7 @@ gl = "*"
 winit = "*"
 glutin = "*"
 image = "*"
-gl-wrapper = { git = "https://ihvl.go.ro/gitea/Error1000/gl-wrapper.git" }
+gl-wrapper = { git = "https://github.com/Error1000/gl-wrapper.git" }
 # Utils
 glam = "*"
 one_user = "*"

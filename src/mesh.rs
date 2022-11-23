@@ -49,13 +49,6 @@ impl<'a, 'b, IT> BoundMesh<'b, IT>
 where
     IT: HasGLEnum,
 {
-    // pub fn new(vert_ord: &'a UnboundIBO<IT>) -> UnboundMesh<'a, IT> {
-    //     UnboundMesh::from(Self {
-    //         vao: VAO::new(),
-    //         indices: vert_ord,
-    //     })    
-    // }
-
     
     pub fn adapt_mesh_to_program(self: &mut Self, p: &Program) -> Result<(), ()> {
         self.vao.adapt_vao_to_program(p)

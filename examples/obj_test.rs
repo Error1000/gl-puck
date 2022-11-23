@@ -104,7 +104,7 @@ fn main() -> io::Result<()> {
     const Z_NEAR: f32 = 0.001;
     let mut w_width: u32 = 400;
     let mut w_height: u32 = 400;
-    const OBJ_FILE: &str = "rungholt.obj";
+    const OBJ_FILE: &str = "dragon.obj";
     const FRAGMENT_SHADER_FILE: &str = "fragmentShader.glsl";
     const VERTEX_SHADER_FILE: &str = "vertexShader.glsl";
     const TEXTURE_FILE: &str = "rungholt-RGBA.png";
@@ -124,8 +124,6 @@ fn main() -> io::Result<()> {
         .expect("Failed to create window!");
     let gl_window = gl_wrapper::init(gl_window).expect("Failed to create opengl context");
 
-    // Setting opengl settings
-   // unsafe{ gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);}
     let mut proj = Mat4::perspective_infinite_lh(fov, (w_width as f32) / (w_height as f32), Z_NEAR);
 
     let mut cam = Camera3D::new();
@@ -288,51 +286,51 @@ fn main() -> io::Result<()> {
                 let delta_t = start.elapsed().as_secs_f32();
                 let fps = 1.0 / delta_t;
 
-                if fps <= 120.0 {
+                if fps <= 60.0 {
                     // If fps is too high ( yes this could be a problem as it makes the movement of the object extremely small and basically introduces a lag spike ( or better named a performance spike ) which is bad) just waste the current cycle and do not reset timer to let it accumulate time
-                    //println!("{}", fps)
+                    println!("{}", fps);
                     if in_control {
                         cam.rotate(
                             Vec3::new(
                                 -last_mouse_change.1 * MOUSE_SENSITIVITY,
                                 -last_mouse_change.0 * MOUSE_SENSITIVITY,
                                 0.0,
-                            ) / fps,
+                            ) * delta_t,
                         );
                         let speed = 0.01;
                         if keyb
                             .is_pressed(glutin::event::VirtualKeyCode::W)
                             .unwrap_or(false)
                         {
-                            cam.masked_step(Vec2::new(0.0, speed) / fps, Vec3::new(1.0, 0.0, 1.0));
+                            cam.masked_step(Vec2::new(0.0, speed) * delta_t, Vec3::new(1.0, 0.0, 1.0));
                         } else if keyb
                             .is_pressed(glutin::event::VirtualKeyCode::S)
                             .unwrap_or(false)
                         {
-                            cam.masked_step(Vec2::new(0.0, -speed) / fps, Vec3::new(1.0, 0.0, 1.0));
+                            cam.masked_step(Vec2::new(0.0, -speed) * delta_t, Vec3::new(1.0, 0.0, 1.0));
                         }
                         if keyb
                             .is_pressed(glutin::event::VirtualKeyCode::A)
                             .unwrap_or(false)
                         {
-                            cam.step(Vec2::new(-speed, 0.0) / fps);
+                            cam.step(Vec2::new(-speed, 0.0) * delta_t);
                         } else if keyb
                             .is_pressed(glutin::event::VirtualKeyCode::D)
                             .unwrap_or(false)
                         {
-                            cam.step(Vec2::new(speed, 0.0) / fps);
+                            cam.step(Vec2::new(speed, 0.0) * delta_t);
                         }
 
                         if keyb
                             .is_pressed(glutin::event::VirtualKeyCode::Space)
                             .unwrap_or(false)
                         {
-                            cam.strafe(Vec3::new(0.0, speed, 0.0) / fps);
+                            cam.strafe(Vec3::new(0.0, speed, 0.0) * delta_t);
                         } else if keyb
                             .is_pressed(glutin::event::VirtualKeyCode::LShift)
                             .unwrap_or(false)
                         {
-                            cam.strafe(Vec3::new(0.0, -speed, 0.0) / fps);
+                            cam.strafe(Vec3::new(0.0, -speed, 0.0) * delta_t);
                         }
                     }
 

@@ -100,7 +100,6 @@ impl Camera3D {
     }
 
     fn update_mat(self: &mut Self) {
-        // Faster to cache
         let mut rot_x = self.rot.x;
         let rot_y = self.rot.y;
         if rot_x >= 89.9 {
@@ -140,18 +139,18 @@ impl Camera3D {
 
     #[inline]
     pub fn look_at(self: &mut Self, point: Vec3) {
-        self.looking_dir = point;
+        self.looking_dir = -point;
         self.mat = None;
     }
 
-    fn scale(b: &Vec3, mut v: Vec3) -> Vec3 {
+    fn apply_mask(b: Vec3, mut v: Vec3) -> Vec3 {
         v.x *= b.x;
         v.y *= b.y;
         v.z *= b.z;
         v
     }
     pub fn masked_step(self: &mut Self, amount: Vec2, mask: Vec3) {
-        self.pos += amount.y * (Self::scale(&mask, self.looking_dir.normalize())).normalize();
+        self.pos += amount.y * (Self::apply_mask(mask, self.looking_dir.normalize())).normalize();
         self.pos -= amount.x * self.looking_dir.cross(self.up).normalize();
         self.mat = None;
     }
